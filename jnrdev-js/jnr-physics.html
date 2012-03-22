@@ -344,19 +344,21 @@
                     player.y += player.velocity.y;
                 }
 
-
-
                 /*
                     Renders the map and player to screen.
                 */
                 function render() {
-                    context.clearRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+                    clearBuffer(buffer);
 
                     drawMap();
                     drawPlayer();
 
-                    screenContext.clearRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+                    clearBuffer(screen);
                     screenContext.drawImage(buffer, 0, 0);
+                }
+
+                function clearBuffer(buffer) {
+                    buffer.width = buffer.width;
                 }
 
                 /*
