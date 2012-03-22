@@ -64,6 +64,10 @@
 
             var player = new Movable(100, 100, 44, 22);
             player.doesCollideWithWorld = true;
+            player.isAffectedByGravity = true;
+            player.onLanding = function() {
+                console.log("Landed!");
+            };
 
             /*
                 Holds data important for checking and resolving 

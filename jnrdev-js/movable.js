@@ -67,7 +67,10 @@ Movable.prototype.clearCollisionInfo = function() {
 /**
     Called before any collision checking occurs.
 */
-Movable.prototype.preCheckCollision = function() { };
+Movable.prototype.preCheckCollision = function() { 
+    this.wasGroundLastFrame = this.isOnGroundNow;
+    this.isOnGroundNow = false;
+};
 
 /**
     Performs collision detection and response.
