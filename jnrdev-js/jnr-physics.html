@@ -7,480 +7,312 @@
     <body>
         <canvas width="256" height="240" id="screen"></canvas>
 
+        <script src="movable.js"></script>
         <script>
-            (function() {
-                // Some simple constants to get things going...
-                var SCREEN_WIDTH = 256;
-                var SCREEN_HEIGHT = 240;
-                var TILE_SIZE = 16;
-                var MAP_WIDTH_IN_TILES = 16;
-                var MAP_HEIGHT_IN_TILES = 15;
+            // Some simple constants to get things going...
+            var SCREEN_WIDTH = 256;
+            var SCREEN_HEIGHT = 240;
+            var TILE_SIZE = 16;
+            var MAP_WIDTH_IN_TILES = 16;
+            var MAP_HEIGHT_IN_TILES = 15;
 
-                // Tile types
-                var EMPTY_TILE = 0;
-                var SOLID_TILE = 1;
-                var SOLID_HALF_TILE = 2;
+            // Tile types
+            var EMPTY_TILE = 0;
+            var SOLID_TILE = 1;
+            var SOLID_HALF_TILE = 2;
 
-                // Object motion directions
-                var DIRECTIONS = {
-                    UP: 0,
-                    RIGHT: 1,
-                    DOWN: 2,
-                    LEFT: 3
-                };
+            // Object motion directions
+            var DIRECTIONS = {
+                UP: 0,
+                RIGHT: 1,
+                DOWN: 2,
+                LEFT: 3
+            };
 
-                // Human-readable map of key characters
-                var KEYS = {
-                    LEFT: 37,
-                    RIGHT: 39,
-                    UP: 38,
-                    DOWN: 40,
-                    JUMP: 65,   // the 'a' key
-                    SHOOT: 83   // the 's' key
-                };
+            // Human-readable map of key characters
+            var KEYS = {
+                LEFT: 37,
+                RIGHT: 39,
+                UP: 38,
+                DOWN: 40,
+                JUMP: 65,   // the 'a' key
+                SHOOT: 83   // the 's' key
+            };
 
-                var screen = document.getElementById("screen"); // screen buffer
-                var buffer = document.createElement("canvas");  // back buffer
-                buffer.width = screen.width;
-                buffer.height = screen.height;
+            var screen = document.getElementById("screen"); // screen buffer
+            var buffer = document.createElement("canvas");  // back buffer
+            buffer.width = screen.width;
+            buffer.height = screen.height;
 
-                var context = (buffer && buffer.getContext) ? buffer.getContext("2d") : null;   // draw everything to this
-                var screenContext = (screen && screen.getContext) ? screen.getContext("2d") : null; // draw the back buffer to this
+            var context = (buffer && buffer.getContext) ? buffer.getContext("2d") : null;   // draw everything to this
+            var screenContext = (screen && screen.getContext) ? screen.getContext("2d") : null; // draw the back buffer to this
 
-                /*
-                    The gamepad gives us an object we can use to check for user input
-                */
-                var gamepad = {
-                    LEFT: false,
-                    RIGHT: false,
-                    UP: false,
-                    DOWN: false,
-                    JUMP: false,
-                    SHOOT: false
-                };
+            /*
+                The gamepad gives us an object we can use to check for user input
+            */
+            var gamepad = {
+                LEFT: false,
+                RIGHT: false,
+                UP: false,
+                DOWN: false,
+                JUMP: false,
+                SHOOT: false
+            };
 
-                var player = {
-                    x: (SCREEN_WIDTH / 2) - 7,
-                    y: (SCREEN_HEIGHT / 2) - 11,
-                    width: 44,
-                    height: 22,
-                    velocity: {
-                        x: 0,
-                        y: 0
-                    },
-                    onGroundNow: false,
-                    onGroundLastFrame: false
-                };
+            Movable.collisionResolver.checkHorizontalEdge = sweepHorizontalEdge;
+            Movable.collisionResolver.checkVerticalEdge = sweepVerticalEdge;
 
-                // Pushing this out into the global environment makes debugging easier
-                window.player = player;
+            var player = new Movable(100, 100, 44, 22);
+            player.doesCollideWithWorld = true;
 
-                /*
-                    Holds data important for checking and resolving 
-                    collisions between a hitbox and the world
-                */
-                var collisionInfo = {
-                    isCollisionX: false,    // Whether a collision has occurred on X axis
-                    isCollisionY: false,    // Whether a collision has occurred on Y axis
-                    worldX: 0,              // The world X coordinate that was checked
-                    worldY: 0,              // The world Y coordinate that was checked
-                    directionX: DIRECTIONS.RIGHT, // The horizontal direction that the object was traveling
-                    directionY: DIRECTIONS.UP,    // The vertical direction that hte object was traveling
-                    tileX: 0,               // The tile X coordinate that was checked
-                    tileY: 0,               // The tile Y coordinate that was checked
-                    correctedX: 0,          // The adjusted coordinate to resolve collision on X axis
-                    correctedY: 0,          // The adjusted coordinate to resolve collision on Y axis
-                    tileType: 0
-                };
+            /*
+                Holds data important for checking and resolving 
+                collisions between a hitbox and the world
+            */
 
-                var tileMap = [
-                    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-                    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-                    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-                    [1,0,0,1,1,1,1,1,1,0,0,0,0,0,0,1],
-                    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-                    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-                    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-                    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-                    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-                    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-                    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-                    [1,1,0,0,0,0,0,0,0,1,0,0,0,0,0,1],
-                    [1,0,0,0,0,0,0,0,1,1,0,0,0,1,1,1],
-                    [1,0,0,0,0,0,1,1,1,1,0,0,0,0,0,1],
-                    [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-                ];
+            var tileMap = [
+                [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+                [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                [1,0,0,1,1,1,1,1,1,0,0,0,0,0,0,1],
+                [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                [1,1,0,0,0,0,0,0,0,1,0,0,0,0,0,1],
+                [1,0,0,0,0,0,0,0,1,1,0,0,0,1,1,1],
+                [1,0,0,0,0,0,1,1,1,1,0,0,0,0,0,1],
+                [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+            ];
 
-                /*
-                    Called before collision detection/response happens
-                */
-                function preCollision() {
-                    player.onGroundLastFrame = player.onGroundNow;
-                    player.onGroundNow = false;
-                }
+            /*
+                For a given X, checks the edge for collisions.
+            */
+            function sweepHorizontalEdge(x, ymin, ymax, directionX, collisionInfo) {
+                var tileX = Math.floor(x / TILE_SIZE);
+                var tileYMin = Math.floor(ymin / TILE_SIZE);
+                var tileYMax = Math.floor(ymax / TILE_SIZE);
+                
+                var tileY = tileYMin;
 
-                /*
-                    Called after collision detection/response happens
-                */
-                function postCollision() {
+                collisionInfo.isCollisionX = false;
 
-                }
+                for(; tileY <= tileYMax; tileY++) {
+                    if(tileMap[tileY][tileX] === SOLID_TILE || tileMap[tileY][tileX] === SOLID_HALF_TILE) {
+                        collisionInfo.isCollisionX = true;
+                        collisionInfo.tileX = tileX;
+                        collisionInfo.tileY = tileY;
+                        collisionInfo.tileType = tileMap[tileY][tileX];
 
-                /*
-                    Called when the player lands on the ground (after falling, jumping, etc.)
-                */
-                function onLanding() {
-                    console.log("landed");
-                }
+                        determineCorrection(directionX, collisionInfo);
 
-                /*
-                    For a given X, checks the edge for collisions.
-                */
-                function sweepHorizontalEdge(x, ymin, ymax, directionX, collisionInfo) {
-                    var tileX = Math.floor(x / TILE_SIZE);
-                    var tileYMin = Math.floor(ymin / TILE_SIZE);
-                    var tileYMax = Math.floor(ymax / TILE_SIZE);
-                    
-                    var tileY = tileYMin;
-
-                    collisionInfo.isCollisionX = false;
-
-                    for(; tileY <= tileYMax; tileY++) {
-                        if(tileMap[tileY][tileX] === SOLID_TILE || tileMap[tileY][tileX] === SOLID_HALF_TILE) {
-                            collisionInfo.isCollisionX = true;
-                            collisionInfo.tileX = tileX;
-                            collisionInfo.tileY = tileY;
-                            collisionInfo.tileType = tileMap[tileY][tileX];
-
-                            determineCorrection(directionX, collisionInfo);
-
-                            return;
-                        }
+                        return;
                     }
                 }
+            }
 
-                /*
-                    For a given Y, checks the edge for collisions.
-                */
-                function sweepVerticalEdge(y, xmin, xmax, directionY, collisionInfo) {
-                    var tileY = Math.floor(y / TILE_SIZE);
-                    var tileXMin = Math.floor(xmin / TILE_SIZE);
-                    var tileXMax = Math.floor(xmax / TILE_SIZE);
-                    
-                    var tileX = tileXMin;
+            /*
+                For a given Y, checks the edge for collisions.
+            */
+            function sweepVerticalEdge(y, xmin, xmax, directionY, collisionInfo) {
+                var tileY = Math.floor(y / TILE_SIZE);
+                var tileXMin = Math.floor(xmin / TILE_SIZE);
+                var tileXMax = Math.floor(xmax / TILE_SIZE);
+                
+                var tileX = tileXMin;
 
-                    collisionInfo.isCollisionY = false;
+                collisionInfo.isCollisionY = false;
 
-                    for(; tileX <= tileXMax; tileX++) {
-                        if(tileMap[tileY][tileX] === SOLID_TILE || tileMap[tileY][tileX] === SOLID_HALF_TILE) {
-                            collisionInfo.isCollisionY = true;
-                            collisionInfo.tileX = tileX;
-                            collisionInfo.tileY = tileY;
-                            collisionInfo.tileType = tileMap[tileY][tileX];
+                for(; tileX <= tileXMax; tileX++) {
+                    if(tileMap[tileY][tileX] === SOLID_TILE || tileMap[tileY][tileX] === SOLID_HALF_TILE) {
+                        collisionInfo.isCollisionY = true;
+                        collisionInfo.tileX = tileX;
+                        collisionInfo.tileY = tileY;
+                        collisionInfo.tileType = tileMap[tileY][tileX];
 
-                            determineCorrection(directionY, collisionInfo);
+                        determineCorrection(directionY, collisionInfo);
 
-                            return;
-                        }
+                        return;
                     }
                 }
+            }
 
-                /*
-                    Determines the amount to move in order to correct a collision.
-                */
-                function determineCorrection(direction, collisionInfo) {
-                    if(direction == DIRECTIONS.LEFT) {
-                        // Collision happened on the left edge, so return the X for the RIGHT side of the tile.
-                        collisionInfo.correctedX = (collisionInfo.tileX * TILE_SIZE) + TILE_SIZE;
-                    } else if(direction == DIRECTIONS.RIGHT) {
-                        // Collision happened on the right edge, so just set the X position.
-                        collisionInfo.correctedX = collisionInfo.tileX * TILE_SIZE ;
-                    } else if(direction == DIRECTIONS.UP) {
-                        // Collision happened on the bottom edge, to just set the Y position?
-                        collisionInfo.correctedY = (collisionInfo.tileY * TILE_SIZE) + TILE_SIZE;
-                    } else if(direction == DIRECTIONS.DOWN) {
-                        // Collision happened on the top edge, so take height into consideration?
-                        collisionInfo.correctedY = collisionInfo.tileY * TILE_SIZE ;
-                    }
-
-                    return;
+            /*
+                Determines the amount to move in order to correct a collision.
+            */
+            function determineCorrection(direction, collisionInfo) {
+                if(direction == DIRECTIONS.LEFT) {
+                    // Collision happened on the left edge, so return the X for the RIGHT side of the tile.
+                    collisionInfo.correctedX = (collisionInfo.tileX * TILE_SIZE) + TILE_SIZE;
+                } else if(direction == DIRECTIONS.RIGHT) {
+                    // Collision happened on the right edge, so just set the X position.
+                    collisionInfo.correctedX = collisionInfo.tileX * TILE_SIZE ;
+                } else if(direction == DIRECTIONS.UP) {
+                    // Collision happened on the bottom edge, to just set the Y position?
+                    collisionInfo.correctedY = (collisionInfo.tileY * TILE_SIZE) + TILE_SIZE;
+                } else if(direction == DIRECTIONS.DOWN) {
+                    // Collision happened on the top edge, so take height into consideration?
+                    collisionInfo.correctedY = collisionInfo.tileY * TILE_SIZE ;
                 }
 
-                function gameloop() {
-                    update();
-                    render();
+                return;
+            }
+
+            function gameloop() {
+                update();
+                render();
+            }
+
+            function update() {
+                // No horizontal movement by default
+                player.velocity.x = 0;
+
+                if(gamepad.LEFT) {
+                    player.velocity.x = -1.296875;
                 }
 
-                function update() {
-                    // No horizontal movement by default
-                    player.velocity.x = 0;
+                if(gamepad.RIGHT) {
+                    player.velocity.x = 1.296875;
+                }
 
-                    if(gamepad.LEFT) {
-                        player.velocity.x = -1.296875;
-                    }
+                if(gamepad.UP) {
+                    player.velocity.y = -3;
+                }
 
-                    if(gamepad.RIGHT) {
-                        player.velocity.x = 1.296875;
-                    }
+                if(gamepad.DOWN) {
+                    player.velocity.y = 3;
+                }
 
-                    if(gamepad.UP) {
-                        player.velocity.y = -3;
-                    }
+                player.update();
+            }
 
-                    if(gamepad.DOWN) {
-                        player.velocity.y = 3;
-                    }
+            /*
+                Renders the map and player to screen.
+            */
+            function render() {
+                clearBuffer(buffer);
 
-                    // Add gravity
-                    player.velocity.y += 0.25;
+                drawMap();
+                drawPlayer();
 
-                    if(gamepad.JUMP) {
-                        if(player.onGroundNow) {
-                            player.velocity.y = -4.6445312;
-                        }
-                    }
+                clearBuffer(screen);
+                screenContext.drawImage(buffer, 0, 0);
+            }
 
-                    // Cap upper bound of vertical speed
-                    if(player.velocity.y > 7) {
-                        player.velocity.y = 7;
-                    }
+            function clearBuffer(buffer) {
+                buffer.width = buffer.width;
+            }
 
-                    // Cap lower bound of vertical speed
-                    if(player.velocity.y < -7) {
-                        player.velocity.y = -7;
-                    }
+            /*
+                Draws the map, filling in solid tiles.
+            */
+            function drawMap() {
+                var tileX = 0,
+                    tileY = 0;
 
-                    preCollision();
-
-                    //
-                    // Perform collision detection and response
-                    //
-                    
-                    // Moving left
-                    if(player.velocity.x < 0) {
-
-                        // Checks left edge
-                        sweepHorizontalEdge(
-                            player.x + player.velocity.x,   // Projected new x coordinate
-                            player.y,                       // Current top y coordinate
-                            player.y + player.height - 1,   // Current bottom y coordinate (INSIDE the hitbox)
-                            DIRECTIONS.LEFT,
-                            collisionInfo
+                // Draw tiles
+                context.fillStyle = "#000";
+                for(tileY = 0; tileY < MAP_HEIGHT_IN_TILES; tileY++) {
+                    for(tileX = 0; tileX < MAP_WIDTH_IN_TILES; tileX++) {
+                        drawTileAt(
+                            tileX * TILE_SIZE, 
+                            tileY * TILE_SIZE, 
+                            tileMap[tileY][tileX]
                         );
-
-                        if(collisionInfo.isCollisionX) {
-                            // Correct the position of the player by adjusting it's left edge.
-                            player.x = collisionInfo.correctedX;
-                            player.velocity.x = 0;
-                        }
-                    }
-
-                    // Moving right
-                    else if(player.velocity.x > 0) {
-
-                        // Checks right edge
-                        sweepHorizontalEdge(
-                            player.x + player.velocity.x + player.width,    // Projected new x coordinate
-                            player.y,                   // Projected new top y coordinate
-                            player.y + player.height - 1,   // Projected new bottom y coordinate (INSIDE the hitbox)
-                            DIRECTIONS.RIGHT,
-                            collisionInfo
-                        );
-
-                        if(collisionInfo.isCollisionX) {
-                            // Correct the position of the player by adjusting it's right edge.
-                            player.x = collisionInfo.correctedX - player.width;
-                            player.velocity.x = 0;
-                        }
-                    }
-
-                    // Moving up
-                    if(player.velocity.y < 0) {
-
-                        // Checks top edge
-                        sweepVerticalEdge(
-                            player.y + player.velocity.y,   // Projected new y coordinate
-                            player.x,                       // Projected new left x coordinate
-                            player.x + player.width - 1,    // Projected new right x coordinate (INSIDE the hitbox)
-                            DIRECTIONS.UP,
-                            collisionInfo
-                        );
-
-                        if(collisionInfo.isCollisionY) {
-                            // Correct the position of the player by adjusting it's top edge.
-                            player.y = collisionInfo.correctedY;
-                            player.velocity.y = 0;
-                        }
-                    }
-
-                    // Moving down
-                    else if(player.velocity.y > 0) {
-
-                        // Checks bottom edge
-                        sweepVerticalEdge(
-                            player.y + player.velocity.y + player.height,   // Projected new y coordinate
-                            player.x,                       // Projected new left x coordinate
-                            player.x + player.width - 1,    // Projected new right x coordinate (INSIDE the hitbox)
-                            DIRECTIONS.DOWN,
-                            collisionInfo
-                        );
-
-                        if(collisionInfo.isCollisionY) {
-                            // Correct the position of the player by adjusting it's bottom edge.
-                            player.y = collisionInfo.correctedY - player.height;
-                            player.velocity.y = 0;
-                            player.onGroundNow = true;
-
-                            if(!player.onGroundLastFrame) {
-                                onLanding();
-                            }
-                        }
-                    }
-
-                    postCollision();
-
-                    // Apply velocity to player
-                    player.x += player.velocity.x;
-                    player.y += player.velocity.y;
-                }
-
-                /*
-                    Renders the map and player to screen.
-                */
-                function render() {
-                    clearBuffer(buffer);
-
-                    drawMap();
-                    drawPlayer();
-
-                    clearBuffer(screen);
-                    screenContext.drawImage(buffer, 0, 0);
-                }
-
-                function clearBuffer(buffer) {
-                    buffer.width = buffer.width;
-                }
-
-                /*
-                    Draws the map, filling in solid tiles.
-                */
-                function drawMap() {
-                    var tileX = 0,
-                        tileY = 0;
-
-                    // Draw tiles
-                    context.fillStyle = "#000";
-                    for(tileY = 0; tileY < MAP_HEIGHT_IN_TILES; tileY++) {
-                        for(tileX = 0; tileX < MAP_WIDTH_IN_TILES; tileX++) {
-                            drawTileAt(
-                                tileX * TILE_SIZE, 
-                                tileY * TILE_SIZE, 
-                                tileMap[tileY][tileX]
-                            );
-                        }
                     }
                 }
+            }
 
-                /*
-                    Draws an individual tile at (screenX, screenY)
-                */
-                function drawTileAt(screenX, screenY, tile) {
-                    if(tile === SOLID_TILE) {
-                        context.fillRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
-                    }
-
-                    if(tile === SOLID_HALF_TILE) {
-                        context.fillRect(screenX, screenY + TILE_SIZE / 2, TILE_SIZE, TILE_SIZE / 2);
-                    }
+            /*
+                Draws an individual tile at (screenX, screenY)
+            */
+            function drawTileAt(screenX, screenY, tile) {
+                if(tile === SOLID_TILE) {
+                    context.fillRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
                 }
 
-                /*
-                    Draws the player at its current position.
-                */
-                function drawPlayer() {
-                    context.fillStyle = "#F00";
-                    context.fillRect(
-                        parseInt(player.x, 10), 
-                        parseInt(player.y, 10), 
-                        player.width, 
-                        player.height
-                    );
+                if(tile === SOLID_HALF_TILE) {
+                    context.fillRect(screenX, screenY + TILE_SIZE / 2, TILE_SIZE, TILE_SIZE / 2);
+                }
+            }
 
-                    /*
-                    context.strokeStyle = "#000";
-                    context.lineWidth = 1;
-                    context.strokeRect(
-                        parseInt(player.x, 10), 
-                        parseInt(player.y, 10), 
-                        player.width, 
-                        player.height
-                    );
-                    */
+            /*
+                Draws the player at its current position.
+            */
+            function drawPlayer() {
+                context.fillStyle = "#F00";
+                context.fillRect(
+                    parseInt(player.boundingBox.x, 10), 
+                    parseInt(player.boundingBox.y, 10), 
+                    player.boundingBox.width, 
+                    player.boundingBox.height
+                );
+            }
+
+            function handleKeydown(evt) {
+                var keyPressed = evt.keyCode;
+
+                if(keyPressed === KEYS.LEFT) {
+                    gamepad.LEFT = true;
                 }
 
-                function handleKeydown(evt) {
-                    var keyPressed = evt.keyCode;
-
-                    if(keyPressed === KEYS.LEFT) {
-                        gamepad.LEFT = true;
-                    }
-
-                    else if(keyPressed === KEYS.RIGHT) {
-                        gamepad.RIGHT = true;
-                    }
-
-                    else if(keyPressed === KEYS.UP) {
-                        gamepad.UP = true;
-                    }
-
-                    else if(keyPressed === KEYS.DOWN) {
-                        gamepad.DOWN = true;
-                    }
-
-                    else if(keyPressed === KEYS.JUMP) {
-                        gamepad.JUMP = true;
-                    }
-
-                    else if(keyPressed === KEYS.SHOOT) {
-                        gamepad.SHOOT = true;
-                    }
+                else if(keyPressed === KEYS.RIGHT) {
+                    gamepad.RIGHT = true;
                 }
 
-                function handleKeyup(evt) {
-                    var keyPressed = evt.keyCode;
-
-                    if(keyPressed === KEYS.LEFT) {
-                        gamepad.LEFT = false;
-                    }
-
-                    else if(keyPressed === KEYS.RIGHT) {
-                        gamepad.RIGHT = false;
-                    }
-
-                    else if(keyPressed === KEYS.UP) {
-                        gamepad.UP = false;
-                    }
-
-                    else if(keyPressed === KEYS.DOWN) {
-                        gamepad.DOWN = false;
-                    }
-
-                    else if(keyPressed === KEYS.JUMP) {
-                        gamepad.JUMP = false;
-                    }
-
-                    else if(keyPressed === KEYS.SHOOT) {
-                        gamepad.SHOOT = false;
-                    }
+                else if(keyPressed === KEYS.UP) {
+                    gamepad.UP = true;
                 }
 
-                window.addEventListener("keydown", handleKeydown);
-                window.addEventListener("keyup", handleKeyup);
+                else if(keyPressed === KEYS.DOWN) {
+                    gamepad.DOWN = true;
+                }
 
-                // Make the whole thing go!
-                window.setInterval(gameloop, 1000/60);
+                else if(keyPressed === KEYS.JUMP) {
+                    gamepad.JUMP = true;
+                }
 
-            }());
+                else if(keyPressed === KEYS.SHOOT) {
+                    gamepad.SHOOT = true;
+                }
+            }
+
+            function handleKeyup(evt) {
+                var keyPressed = evt.keyCode;
+
+                if(keyPressed === KEYS.LEFT) {
+                    gamepad.LEFT = false;
+                }
+
+                else if(keyPressed === KEYS.RIGHT) {
+                    gamepad.RIGHT = false;
+                }
+
+                else if(keyPressed === KEYS.UP) {
+                    gamepad.UP = false;
+                }
+
+                else if(keyPressed === KEYS.DOWN) {
+                    gamepad.DOWN = false;
+                }
+
+                else if(keyPressed === KEYS.JUMP) {
+                    gamepad.JUMP = false;
+                }
+
+                else if(keyPressed === KEYS.SHOOT) {
+                    gamepad.SHOOT = false;
+                }
+            }
+
+            window.addEventListener("keydown", handleKeydown);
+            window.addEventListener("keyup", handleKeyup);
+
+            // Make the whole thing go!
+            window.setInterval(gameloop, 1000/60);
         </script>
     </body>
 </html>
